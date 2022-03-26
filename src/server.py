@@ -51,22 +51,22 @@ class Buffer:
         self.conn = conn
         self.buffer = b''
 
+    # 0 - message ok, 1 - TIMEOUT error, 2 - SYNTAX error
     def get_line(self, max_input_length, timeout):
         while b'\a\b' not in self.buffer:
             if len(self.buffer.decode(FORMAT)) > max_input_length:
-                return None
+                return 2, None
             self.conn.settimeout(timeout)
             try:
                 data = self.conn.recv(SIZE)
-                #print(f"[DATA] {data.decode(FORMAT)}")
                 self.buffer += data
             except socket.timeout:
                 self.conn.settimeout(None)
-                return None
+                return 1, None
             self.conn.settimeout(None)
         line, sep, self.buffer = self.buffer.partition(b'\a\b')
         if len(line.decode(FORMAT)) > max_input_length:
-            return None
+            return 2, None
         return line.decode(FORMAT)
 
 
@@ -119,16 +119,27 @@ class Robot:
         else:
             self.direction = Direction.SOUTH
 
+    def __valid_input_message(self, max_length, timeout):
+        res, msg = self.buffer.get_line(max_length, timeout)
+        if res == 1:
+            return False, None
+        elif res == 2:
+            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+            return False, None
+        return True, msg
+
     def get_username(self):
-        username = self.buffer.get_line(MAX_USERNAME_LENGTH, TIMEOUT)
-        # if username == None:
-        #     todo
+        res, username = self.__valid_input_message(MAX_USERNAME_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.username = username
         self.__send_message_to_client("107 KEY REQUEST\a\b", 1)
         return True
 
     def get_client_key_id(self):
-        key_id = self.buffer.get_line(MAX_KEY_ID_LENGTH, TIMEOUT)
+        res, key_id = self.__valid_input_message(MAX_KEY_ID_LENGTH, TIMEOUT)
+        if not res:
+            return False
         if not is_integer(key_id):
             self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
             return False
@@ -143,7 +154,9 @@ class Robot:
         return True
 
     def confirm_client_key(self):
-        confirmation_code = self.buffer.get_line(MAX_CONFIRMATION_CODE_LENGTH, TIMEOUT)
+        res, confirmation_code = self.__valid_input_message(MAX_CONFIRMATION_CODE_LENGTH, TIMEOUT)
+        if not res:
+            return False
         if not is_integer(confirmation_code):
             self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
             return False
@@ -159,7 +172,9 @@ class Robot:
         return True
 
     def make_second_action(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
         if curr_coordinate == Coordinate(0, 0):  # we hit the sweet spot
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
@@ -170,7 +185,9 @@ class Robot:
             return True
 
     def process_second_move(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
@@ -200,13 +217,17 @@ class Robot:
             return True
 
     def make_second_second_move(self):
-        # getting clint_ok message after turning around
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        # getting client_ok message after turning around
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__send_message_to_client("102 MOVE\a\b", 7)
         return True
 
     def process_second_second_move(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
@@ -232,7 +253,9 @@ class Robot:
         return True
 
     def navigate_to_finish(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
@@ -257,26 +280,37 @@ class Robot:
         self.previous_coordinate = curr_coordinate
         return True
 
-
     def take_a_detour(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__update_direction_after_turning_left()
         self.__send_message_to_client("103 TURN LEFT\a\b", 9)
 
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__update_direction_after_turning_left()
         self.__send_message_to_client("103 TURN LEFT\a\b", 9)
 
-        robot_msg = self.buffer.get_line(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        if not res:
+            return False
         curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
         self.made_straight_move = True
         self.previous_coordinate = curr_coordinate
@@ -284,10 +318,11 @@ class Robot:
         return True
 
     def get_message_and_log_out(self):
-        robot_msg = self.buffer.get_line(MAX_CLIENT_MESSAGE_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_MESSAGE_LENGTH, TIMEOUT)
+        if not res:
+            return False
         self.__send_message_to_client("106 LOGOUT\a\b", 11)
         return False
-
 
     def make_action(self):
         return (self.automaton[self.state])(self)
