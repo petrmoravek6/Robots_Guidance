@@ -46,7 +46,8 @@ def is_integer(x):
     except ValueError:
         return False
 
-
+# class representing a buffer, that receives specific amount (SIZE) of data from socket. It checks if the length
+# of the message is not already bigger than maximum value (max_input_len). It also sets timeout.
 class Buffer:
     def __init__(self, conn):
         self.conn = conn
@@ -85,10 +86,12 @@ class Robot:
         self.directions_to_finish = set()
         self.made_straight_move = False
 
+    # sending message to client and changing our state value
     def __send_message_to_client(self, msg, new_state):
         self.connection.send(msg.encode(FORMAT))
         self.state = new_state
 
+    # method used for detecting directions we need to take to get to finish
     def __update_directions_to_finish(self, curr_coordinate):
         self.directions_to_finish = set()
         if curr_coordinate.x > 0:
@@ -177,6 +180,27 @@ class Robot:
             return False, None
         return True, msg
 
+    def __detect_direction_and_make_move_or_turn(self, curr_coordinate):
+        if curr_coordinate - self.previous_coordinate == Coordinate(0, 1):
+            self.direction = Direction.NORTH
+        elif curr_coordinate - self.previous_coordinate == Coordinate(1, 0):
+            self.direction = Direction.EAST
+        elif curr_coordinate - self.previous_coordinate == Coordinate(0, -1):
+            self.direction = Direction.SOUTH
+        else:
+            self.direction = Direction.WEST
+        self.__update_directions_to_finish(curr_coordinate)
+        # check if we have good direction, if yes than make move, if not than turn right
+        if self.direction in self.directions_to_finish:
+            self.made_straight_move = True
+            self.__send_message_to_client("102 MOVE\a\b", 8)
+        else:
+            self.made_straight_move = False
+            self.__update_direction_after_turning_right()
+            self.__send_message_to_client("104 TURN RIGHT\a\b", 8)
+        self.previous_coordinate = curr_coordinate
+        return True
+
     def __get_username(self):
         res, username = self.__valid_input_message(MAX_USERNAME_LENGTH, TIMEOUT)
         if not res:
@@ -237,25 +261,7 @@ class Robot:
             self.__send_message_to_client("104 TURN RIGHT\a\b", 6)
             return True
         else:
-            if curr_coordinate - self.previous_coordinate == Coordinate(0, 1):
-                self.direction = Direction.NORTH
-            elif curr_coordinate - self.previous_coordinate == Coordinate(1, 0):
-                self.direction = Direction.EAST
-            elif curr_coordinate - self.previous_coordinate == Coordinate(0, -1):
-                self.direction = Direction.SOUTH
-            else:
-                self.direction = Direction.WEST
-            self.__update_directions_to_finish(curr_coordinate)
-            # check if we have good direction, if yes than make move, if not than turn right
-            if self.direction in self.directions_to_finish:
-                self.made_straight_move = True
-                self.__send_message_to_client("102 MOVE\a\b", 8)
-            else:
-                self.made_straight_move = False
-                self.__update_direction_after_turning_right()
-                self.__send_message_to_client("104 TURN RIGHT\a\b", 8)
-            self.previous_coordinate = curr_coordinate
-            return True
+            return self.__detect_direction_and_make_move_or_turn(curr_coordinate)
 
     def __make_second_second_move(self):
         # getting client_ok message after turning around
@@ -274,25 +280,7 @@ class Robot:
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
             return True
-        if curr_coordinate - self.previous_coordinate == Coordinate(0, 1):
-            self.direction = Direction.NORTH
-        elif curr_coordinate - self.previous_coordinate == Coordinate(1, 0):
-            self.direction = Direction.EAST
-        elif curr_coordinate - self.previous_coordinate == Coordinate(0, -1):
-            self.direction = Direction.SOUTH
-        else:
-            self.direction = Direction.WEST
-        self.__update_directions_to_finish(curr_coordinate)
-        # check if we have good direction, if yes than make move, if not than turn right
-        if self.direction in self.directions_to_finish:
-            self.made_straight_move = True
-            self.__send_message_to_client("102 MOVE\a\b", 8)
-        else:
-            self.made_straight_move = False
-            self.__update_direction_after_turning_right()
-            self.__send_message_to_client("104 TURN RIGHT\a\b", 8)
-        self.previous_coordinate = curr_coordinate
-        return True
+        return self.__detect_direction_and_make_move_or_turn(curr_coordinate)
 
     def __navigate_to_finish(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
@@ -370,9 +358,9 @@ class Robot:
         return False
 
     def make_action(self):
-        return (self.automaton[self.state])(self)
+        return self.automaton[self.state](self)
 
-    # state -1: final state, failure, no transitions from here
+    # There is unique method we have to use for every state we are in
     # state 0:  initial state, getting username, sending request for key_id
     # state 1:  getting key_id, sending server confirmation
     # state 2:  getting client confirmation code, we calculate hash name and
@@ -389,6 +377,7 @@ class Robot:
     #           so we have to take a detour. (right, move, left, move, move, left, move, right) than we
     #           switch to state 8 again
     # state 10: getting message from client and loging out
+    # state -1: final state, failure, no transitions from here
     # state 11: final state, success, no transitions from here
     automaton = {
         0: __get_username,
@@ -426,6 +415,7 @@ def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((IP, port))
     server.listen()
+    print(f"[INFO] Server listening on PORT: {port}, IP ADDRESS: {IP}")
 
     while True:
         conn, addr = server.accept()
