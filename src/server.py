@@ -120,29 +120,62 @@ class Robot:
         else:
             self.direction = Direction.SOUTH
 
-    def __valid_input_message(self, max_length, timeout):
+    def __valid_client_key_id_content(self, key_id):
+        if not is_integer(key_id) or len(key_id) > MAX_KEY_ID_LENGTH:
+            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+            return False
+        if not 0 <= int(key_id) <= 4:
+            self.__send_message_to_client("303 KEY OUT OF RANGE\a\b", -1)
+            return False
+        return True
+
+    def __valid_client_confirmation_content(self, confirmation_code):
+        if len(confirmation_code) > MAX_CONFIRMATION_CODE_LENGTH:
+            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+            return False
+        for i in confirmation_code:
+            if not is_integer(i):
+                self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+                return False
+        if not (int(confirmation_code) - (self.authentication_keys[self.key_id])[1]) % 65536 == self.hash_username:
+            self.__send_message_to_client("300 LOGIN FAILED\a\b", -1)
+            return False
+        return True
+
+    def __valid_client_ok_content(self, msg):
+        if bool(re.fullmatch(r"OK -?[0-9]+ -?[0-9]+", msg)):
+            return True
+        else:
+            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+            return False
+
+    def __valid_input_message(self, max_length, timeout, content_test=None):
         res, msg = self.buffer.get_line(max_length, timeout)
         if res == 1:
             return False, None
         elif res == 2:
             self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
             return False, None
-        return True, msg
-
-    def __recharging_successful(self, msg):
+        # testing recharging
         # getting message FULL_POWER without previous RECHARGING is a logic error
         if msg == "FULL POWER":
             self.__send_message_to_client("302 LOGIC ERROR\a\b", -1)
             return False
         elif msg == "RECHARGING":
-            res, msg_2 = self.__valid_input_message(MAX_CLIENT_FULL_POWER_LENGTH, TIMEOUT_RECHARGING)
-            if not res:
-                return False
+            res_2, msg_2 = self.buffer.get_line(MAX_CLIENT_FULL_POWER_LENGTH, TIMEOUT_RECHARGING)
+            if res == 1:
+                return False, None
+            elif res == 2:
+                self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
+                return False, None
             if msg_2 != "FULL POWER":
                 self.__send_message_to_client("302 LOGIC ERROR\a\b", -1)
-                return False
-        return True
-
+                return False, None
+            return self.__valid_input_message(max_length, timeout, content_test)
+        # testing recharging completed, now we have to test a content of the message
+        if not(content_test is None) and not content_test(msg):
+            return False, None
+        return True, msg
 
     def __get_username(self):
         res, username = self.__valid_input_message(MAX_USERNAME_LENGTH, TIMEOUT)
@@ -153,43 +186,32 @@ class Robot:
         return True
 
     def __get_client_key_id(self):
-        res, key_id = self.__valid_input_message(MAX_KEY_ID_LENGTH, TIMEOUT)
+        res, key_id = self.__valid_input_message(MAX_CLIENT_RECHARGING_LENGTH, TIMEOUT,
+                                                 self.__valid_client_key_id_content)
         if not res:
-            return False
-        if not is_integer(key_id):
-            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
-            return False
-        if not 0 <= int(key_id) <= 4:
-            self.__send_message_to_client("303 KEY OUT OF RANGE\a\b", -1)
             return False
         self.key_id = int(key_id)
         g = (ord(c) for c in self.username)
         ascii_value = sum(g)
         self.hash_username = (ascii_value * 1000) % 65536
         msg = (self.hash_username + (self.authentication_keys[self.key_id])[0]) % 65536
-        self.__send_message_to_client(str(msg)+"\a\b", 2)
+        self.__send_message_to_client(str(msg) + "\a\b", 2)
         return True
 
     def __confirm_client_key(self):
-        res, confirmation_code = self.__valid_input_message(MAX_CONFIRMATION_CODE_LENGTH, TIMEOUT)
+        res, confirmation_code = self.__valid_input_message(MAX_CLIENT_RECHARGING_LENGTH, TIMEOUT,
+                                                            self.__valid_client_confirmation_content)
         if not res:
             return False
-        if not is_integer(confirmation_code):
-            self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
-            return False
-        if (int(confirmation_code) - (self.authentication_keys[self.key_id])[1]) % 65536 == self.hash_username:
-            self.__send_message_to_client("200 OK\a\b", 3)
-            return True
-        else:
-            self.__send_message_to_client("300 LOGIN FAILED\a\b", -1)
-            return False
+        self.__send_message_to_client("200 OK\a\b", 3)
+        return True
 
     def __make_first_move(self):
         self.__send_message_to_client("102 MOVE\a\b", 4)
         return True
 
     def __make_second_action(self):
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         coordinates = re.findall("-?[0-9]+", robot_msg)
@@ -203,7 +225,7 @@ class Robot:
             return True
 
     def __process_second_move(self):
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         coordinates = re.findall("-?[0-9]+", robot_msg)
@@ -237,14 +259,14 @@ class Robot:
 
     def __make_second_second_move(self):
         # getting client_ok message after turning around
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__send_message_to_client("102 MOVE\a\b", 7)
         return True
 
     def __process_second_second_move(self):
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         coordinates = re.findall("-?[0-9]+", robot_msg)
@@ -273,10 +295,8 @@ class Robot:
         return True
 
     def __navigate_to_finish(self):
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
-            return False
-        if not self.__recharging_successful(self, robot_msg):
             return False
 
         coordinates = re.findall("-?[0-9]+", robot_msg)
@@ -305,34 +325,34 @@ class Robot:
         return True
 
     def __take_a_detour(self):
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__update_direction_after_turning_left()
         self.__send_message_to_client("103 TURN LEFT\a\b", 9)
 
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__send_message_to_client("102 MOVE\a\b", 9)
 
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         self.__update_direction_after_turning_left()
         self.__send_message_to_client("103 TURN LEFT\a\b", 9)
 
-        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
+        res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT, self.__valid_client_ok_content)
         if not res:
             return False
         coordinates = re.findall("-?[0-9]+", robot_msg)
@@ -409,7 +429,7 @@ def main():
 
     while True:
         conn, addr = server.accept()
-        thread = threading.Thread(target=handle_client, args=conn)
+        thread = threading.Thread(target=handle_client, args=(conn,))
         thread.start()
 
 
