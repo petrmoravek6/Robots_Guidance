@@ -163,9 +163,9 @@ class Robot:
             return False
         elif msg == "RECHARGING":
             res_2, msg_2 = self.buffer.get_line(MAX_CLIENT_FULL_POWER_LENGTH, TIMEOUT_RECHARGING)
-            if res == 1:
+            if res_2 == 1:
                 return False, None
-            elif res == 2:
+            elif res_2 == 2:
                 self.__send_message_to_client("301 SYNTAX ERROR\a\b", -1)
                 return False, None
             if msg_2 != "FULL POWER":
