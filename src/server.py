@@ -2,6 +2,7 @@ import socket
 import threading
 import sys
 import enum
+import re
 
 IP = socket.gethostbyname(socket.gethostname())
 SIZE = 1024
@@ -67,7 +68,7 @@ class Buffer:
         line, sep, self.buffer = self.buffer.partition(b'\a\b')
         if len(line.decode(FORMAT)) > max_input_length:
             return 2, None
-        return line.decode(FORMAT)
+        return 0, line.decode(FORMAT)
 
 
 class Robot:
@@ -128,7 +129,22 @@ class Robot:
             return False, None
         return True, msg
 
-    def get_username(self):
+    def __recharging_successful(self, msg):
+        # getting message FULL_POWER without previous RECHARGING is a logic error
+        if msg == "FULL POWER":
+            self.__send_message_to_client("302 LOGIC ERROR\a\b", -1)
+            return False
+        elif msg == "RECHARGING":
+            res, msg_2 = self.__valid_input_message(MAX_CLIENT_FULL_POWER_LENGTH, TIMEOUT_RECHARGING)
+            if not res:
+                return False
+            if msg_2 != "FULL POWER":
+                self.__send_message_to_client("302 LOGIC ERROR\a\b", -1)
+                return False
+        return True
+
+
+    def __get_username(self):
         res, username = self.__valid_input_message(MAX_USERNAME_LENGTH, TIMEOUT)
         if not res:
             return False
@@ -136,7 +152,7 @@ class Robot:
         self.__send_message_to_client("107 KEY REQUEST\a\b", 1)
         return True
 
-    def get_client_key_id(self):
+    def __get_client_key_id(self):
         res, key_id = self.__valid_input_message(MAX_KEY_ID_LENGTH, TIMEOUT)
         if not res:
             return False
@@ -146,14 +162,15 @@ class Robot:
         if not 0 <= int(key_id) <= 4:
             self.__send_message_to_client("303 KEY OUT OF RANGE\a\b", -1)
             return False
+        self.key_id = int(key_id)
         g = (ord(c) for c in self.username)
         ascii_value = sum(g)
         self.hash_username = (ascii_value * 1000) % 65536
-        msg = (self.hash_username + (self.authentication_keys[int(self.key_id)])[0]) % 65536
-        self.__send_message_to_client(str(msg), 2)
+        msg = (self.hash_username + (self.authentication_keys[self.key_id])[0]) % 65536
+        self.__send_message_to_client(str(msg)+"\a\b", 2)
         return True
 
-    def confirm_client_key(self):
+    def __confirm_client_key(self):
         res, confirmation_code = self.__valid_input_message(MAX_CONFIRMATION_CODE_LENGTH, TIMEOUT)
         if not res:
             return False
@@ -167,15 +184,16 @@ class Robot:
             self.__send_message_to_client("300 LOGIN FAILED\a\b", -1)
             return False
 
-    def make_first_move(self):
+    def __make_first_move(self):
         self.__send_message_to_client("102 MOVE\a\b", 4)
         return True
 
-    def make_second_action(self):
+    def __make_second_action(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
-        curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
+        coordinates = re.findall("-?[0-9]+", robot_msg)
+        curr_coordinate = Coordinate(int(coordinates[0]), int(coordinates[1]))
         if curr_coordinate == Coordinate(0, 0):  # we hit the sweet spot
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
             return True
@@ -184,11 +202,12 @@ class Robot:
             self.__send_message_to_client("102 MOVE\a\b", 5)
             return True
 
-    def process_second_move(self):
+    def __process_second_move(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
-        curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
+        coordinates = re.findall("-?[0-9]+", robot_msg)
+        curr_coordinate = Coordinate(int(coordinates[0]), int(coordinates[1]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
             return True
@@ -216,7 +235,7 @@ class Robot:
             self.previous_coordinate = curr_coordinate
             return True
 
-    def make_second_second_move(self):
+    def __make_second_second_move(self):
         # getting client_ok message after turning around
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
@@ -224,22 +243,23 @@ class Robot:
         self.__send_message_to_client("102 MOVE\a\b", 7)
         return True
 
-    def process_second_second_move(self):
+    def __process_second_second_move(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
-        curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
+        coordinates = re.findall("-?[0-9]+", robot_msg)
+        curr_coordinate = Coordinate(int(coordinates[0]), int(coordinates[1]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
             return True
-        if curr_coordinate - self.previous_coordinate == (1, -1):
-            self.direction = Direction.SOUTH
-        elif curr_coordinate - self.previous_coordinate == (-1, -1):
-            self.direction = Direction.WEST
-        elif curr_coordinate - self.previous_coordinate == (-1, 1):
+        if curr_coordinate - self.previous_coordinate == Coordinate(0, 1):
             self.direction = Direction.NORTH
-        else:
+        elif curr_coordinate - self.previous_coordinate == Coordinate(1, 0):
             self.direction = Direction.EAST
+        elif curr_coordinate - self.previous_coordinate == Coordinate(0, -1):
+            self.direction = Direction.SOUTH
+        else:
+            self.direction = Direction.WEST
         self.__update_directions_to_finish(curr_coordinate)
         # check if we have good direction, if yes than make move, if not than turn right
         if self.direction in self.directions_to_finish:
@@ -252,11 +272,15 @@ class Robot:
         self.previous_coordinate = curr_coordinate
         return True
 
-    def navigate_to_finish(self):
+    def __navigate_to_finish(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
-        curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
+        if not self.__recharging_successful(self, robot_msg):
+            return False
+
+        coordinates = re.findall("-?[0-9]+", robot_msg)
+        curr_coordinate = Coordinate(int(coordinates[0]), int(coordinates[1]))
         if curr_coordinate == Coordinate(0, 0):
             self.__send_message_to_client("105 GET MESSAGE\a\b", 10)
             return True
@@ -280,7 +304,7 @@ class Robot:
         self.previous_coordinate = curr_coordinate
         return True
 
-    def take_a_detour(self):
+    def __take_a_detour(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
@@ -311,13 +335,14 @@ class Robot:
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_OK_LENGTH, TIMEOUT)
         if not res:
             return False
-        curr_coordinate = Coordinate(int(robot_msg[4]), int(robot_msg[8]))
+        coordinates = re.findall("-?[0-9]+", robot_msg)
+        curr_coordinate = Coordinate(int(coordinates[0]), int(coordinates[1]))
         self.made_straight_move = True
         self.previous_coordinate = curr_coordinate
         self.__send_message_to_client("102 MOVE\a\b", 8)
         return True
 
-    def get_message_and_log_out(self):
+    def __get_message_and_log_out(self):
         res, robot_msg = self.__valid_input_message(MAX_CLIENT_MESSAGE_LENGTH, TIMEOUT)
         if not res:
             return False
@@ -346,17 +371,17 @@ class Robot:
     # state 10: getting message from client and loging out
     # state 11: final state, success, no transitions from here
     automaton = {
-        0: get_username,
-        1: get_client_key_id,
-        2: confirm_client_key,
-        3: make_first_move,
-        4: make_second_action,
-        5: process_second_move,
-        6: make_second_second_move,
-        7: process_second_second_move,
-        8: navigate_to_finish,
-        9: take_a_detour,
-        10: get_message_and_log_out
+        0: __get_username,
+        1: __get_client_key_id,
+        2: __confirm_client_key,
+        3: __make_first_move,
+        4: __make_second_action,
+        5: __process_second_move,
+        6: __make_second_second_move,
+        7: __process_second_second_move,
+        8: __navigate_to_finish,
+        9: __take_a_detour,
+        10: __get_message_and_log_out
     }
 
     authentication_keys = {
@@ -368,9 +393,7 @@ class Robot:
     }
 
 
-def handle_client(conn, addr):
-    print(f"[NEW CONNECTION] {addr} connected")
-
+def handle_client(conn):
     connected = True
     robot = Robot(conn)
     while connected:
@@ -380,17 +403,14 @@ def handle_client(conn, addr):
 
 def main():
     port = int(sys.argv[1])
-    print("[STARTING] Server is starting...")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((IP, port))
     server.listen()
-    print(f"[LISTENING] Server is listening on {IP}:{port}")
 
     while True:
         conn, addr = server.accept()
-        thread = threading.Thread(target=handle_client, args=(conn, addr))
+        thread = threading.Thread(target=handle_client, args=conn)
         thread.start()
-        print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}")
 
 
 if __name__ == "__main__":
