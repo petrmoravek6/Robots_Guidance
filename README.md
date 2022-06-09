@@ -1,53 +1,57 @@
-## Robots_Guidance
+# Robots_Guidance
 
 Cílem úlohy je vytvořit vícevláknový server pro TCP/IP komunikaci a implementovat komunikační protokol podle dané specifikace. Pozor, implementace klientské části není součástí úlohy!
 
 Server pro automatické řízení vzdálených robotů. Roboti se sami přihlašují k serveru a ten je navádí ke středu souřadnicového systému. Pro účely testování každý robot startuje na náhodných souřadnicích a snaží se dojít na souřadnici [0,0]. Na cílové souřadnici musí robot vyzvednout tajemství. Po cestě k cíli mohou roboti narazit na překážky, které musí obejít. Server zvládne navigovat více robotů najednou a implementuje bezchybně komunikační protokol.
 
-# Detailní specifikace
+## Detailní specifikace
 Komunikace mezi serverem a roboty je realizována plně textovým protokolem. Každý příkaz je zakončen dvojicí speciálních symbolů „\a\b“. (Jsou to dva znaky '\a' a '\b'.) Server musí dodržet komunikační protokol do detailu přesně, ale musí počítat s nedokonalými firmwary robotů (viz sekce Speciální situace).
 
-Zprávy serveru:
+### Zprávy serveru:
 
-Název	Zpráva Popis
-SERVER_CONFIRMATION	<16-bitové číslo v decimální notaci>\a\b	Zpráva s potvrzovacím kódem. Může obsahovat maximálně 5 čísel a ukončovací sekvenci \a\b.
-SERVER_MOVE	102 MOVE\a\b	Příkaz pro pohyb o jedno pole vpřed
-SERVER_TURN_LEFT	103 TURN LEFT\a\b	Příkaz pro otočení doleva
-SERVER_TURN_RIGHT	104 TURN RIGHT\a\b	Příkaz pro otočení doprava
-SERVER_PICK_UP	105 GET MESSAGE\a\b	Příkaz pro vyzvednutí zprávy
-SERVER_LOGOUT	106 LOGOUT\a\b	Příkaz pro ukončení spojení po úspěšném vyzvednutí zprávy
-SERVER_KEY_REQUEST	107 KEY REQUEST\a\b	Žádost serveru o Key ID pro komunikaci
-SERVER_OK	200 OK\a\b	Kladné potvrzení
-SERVER_LOGIN_FAILED	300 LOGIN FAILED\a\b	Nezdařená autentizace
-SERVER_SYNTAX_ERROR	301 SYNTAX ERROR\a\b	Chybná syntaxe zprávy
-SERVER_LOGIC_ERROR	302 LOGIC ERROR\a\b	Zpráva odeslaná ve špatné situaci
-SERVER_KEY_OUT_OF_RANGE_ERROR	303 KEY OUT OF RANGE\a\b	Key ID není v očekávaném rozsahu
-Zprávy klienta:
+Název	-- Zpráva -- Popis\
+SERVER_CONFIRMATION --	<16-bitové číslo v decimální notaci>\a\b -- Zpráva s potvrzovacím kódem. Může obsahovat maximálně 5 čísel a ukončovací sekvenci \a\b.\
+SERVER_MOVE -- 102 MOVE\a\b -- Příkaz pro pohyb o jedno pole vpřed\
+SERVER_TURN_LEFT -- 103 TURN LEFT\a\b -- Příkaz pro otočení doleva\
+SERVER_TURN_RIGHT -- 104 TURN RIGHT\a\b -- Příkaz pro otočení doprava\
+SERVER_PICK_UP --	105 GET MESSAGE\a\b -- Příkaz pro vyzvednutí zprávy\
+SERVER_LOGOUT -- 106 LOGOUT\a\b -- Příkaz pro ukončení spojení po úspěšném vyzvednutí zprávy\
+SERVER_KEY_REQUEST -- 107 KEY REQUEST\a\b -- Žádost serveru o Key ID pro komunikaci\
+SERVER_OK -- 200 OK\a\b	-- Kladné potvrzení\
+SERVER_LOGIN_FAILED -- 300 LOGIN FAILED\a\b -- Nezdařená autentizace\
+SERVER_SYNTAX_ERROR -- 301 SYNTAX ERROR\a\b -- Chybná syntaxe zprávy\
+SERVER_LOGIC_ERROR -- 302 LOGIC ERROR\a\b -- Zpráva odeslaná ve špatné situaci\
+SERVER_KEY_OUT_OF_RANGE_ERROR -- 303 KEY OUT OF RANGE\a\b -- Key ID není v očekávaném rozsahu
 
-Název	Zpráva	Popis	Ukázka	Maximální délka
-CLIENT_USERNAME	<user name>\a\b	Zpráva s uživatelským jménem. Jméno může být libovolná sekvence znaků kromě kromě dvojice \a\b.	Umpa_Lumpa\a\b	20
-CLIENT_KEY_ID	<Key ID>\a\b	Zpráva obsahující Key ID. Může obsahovat pouze celé číslo o maximálně třech cifrách.	2\a\b	5
-CLIENT_CONFIRMATION	<16-bitové číslo v decimální notaci>\a\b	Zpráva s potvrzovacím kódem. Může obsahovat maximálně 5 čísel a ukončovací sekvenci \a\b.	1009\a\b	7
-CLIENT_OK	OK <x> <y>\a\b	Potvrzení o provedení pohybu, kde x a y jsou souřadnice robota po provedení pohybového příkazu.	OK -3 -1\a\b	12
-CLIENT_RECHARGING	RECHARGING\a\b	Robot se začal dobíjet a přestal reagovat na zprávy.		12
-CLIENT_FULL_POWER	FULL POWER\a\b	Robot doplnil energii a opět příjímá příkazy.		12
-CLIENT_MESSAGE	<text>\a\b	Text vyzvednutého tajného vzkazu. Může obsahovat jakékoliv znaky kromě ukončovací sekvence \a\b.	Haf!\a\b	100
-Časové konstanty:
+### Zprávy klienta:
 
-Název	Hodnota [s]	Popis
-TIMEOUT	1	Server i klient očekávají od protistrany odpověď po dobu tohoto intervalu.
-TIMEOUT_RECHARGING	5	Časový interval, během kterého musí robot dokončit dobíjení.
+Název -- Zpráva -- Popis -- Ukázka -- Maximální délka\
+CLIENT_USERNAME -- <user name>\a\b -- Zpráva s uživatelským jménem. Jméno může být libovolná sekvence znaků kromě kromě dvojice \a\b. -- Umpa_Lumpa\a\b -- 20\
+CLIENT_KEY_ID -- <Key ID>\a\b -- Zpráva obsahující Key ID. -- Může obsahovat pouze celé číslo o maximálně třech cifrách.	2\a\b -- 5\
+CLIENT_CONFIRMATION -- <16-bitové číslo v decimální notaci>\a\b -- Zpráva s potvrzovacím kódem. Může obsahovat maximálně 5 čísel a ukončovací sekvenci \a\b. -- 1009\a\b -- 7\
+CLIENT_OK -- OK <x> <y>\a\b -- Potvrzení o provedení pohybu, kde x a y jsou souřadnice robota po provedení pohybového příkazu. -- OK -3 -1\a\b -- 12\
+CLIENT_RECHARGING -- RECHARGING\a\b -- Robot se začal dobíjet a přestal reagovat na zprávy. -- 12\
+CLIENT_FULL_POWER -- FULL POWER\a\b -- Robot doplnil energii a opět příjímá příkazy. -- 12\
+CLIENT_MESSAGE -- <text>\a\b -- Text vyzvednutého tajného vzkazu. Může obsahovat jakékoliv znaky kromě ukončovací sekvence \a\b. -- Haf!\a\b -- 100\
+
+### Časové konstanty:
+
+Název -- Hodnota [s] -- Popis\
+TIMEOUT -- 1 -- Server i klient očekávají od protistrany odpověď po dobu tohoto intervalu.\
+TIMEOUT_RECHARGING -- 5 -- Časový interval, během kterého musí robot dokončit dobíjení.
+  
 Komunikaci s roboty lze rozdělit do několika fází:
 
-Autentizace
+### Autentizace
 Server i klient oba znají pět dvojic autentizačních klíčů (nejedná se o veřejný a soukromý klíč):
 
-Key ID	Server Key	Client Key
-0	23019	32037
-1	32037	29295
-2	18789	13603
-3	16443	29533
+Key ID	Server Key	Client Key\
+0	23019	32037\
+1	32037	29295\
+2	18789	13603\
+3	16443	29533\
 4	18189	21952
+  
 Každý robot začne komunikaci odesláním svého uživatelského jména (zpráva CLIENT_USERNAME). Uživatelské jméno múže být libovolná sekvence 18 znaků neobsahující sekvenci „\a\b“. V dalším kroku vyzve server klienta k odeslání Key ID (zpráva SERVER_KEY_REQUEST), což je vlastně identifikátor dvojice klíčů, které chce použít pro autentizaci. Klient odpoví zprávou CLIENT_KEY_ID, ve které odešle Key ID. Po té server zná správnou dvojici klíčů, takže může spočítat "hash" kód z uživatelského jména podle následujícího vzorce:
 
 Uživatelské jméno: Mnau!
