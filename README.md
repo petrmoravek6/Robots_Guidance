@@ -1,5 +1,4 @@
 ## Robots_Guidance
-=============
 
 Cílem úlohy je vytvořit vícevláknový server pro TCP/IP komunikaci a implementovat komunikační protokol podle dané specifikace. Pozor, implementace klientské části není součástí úlohy!
 
