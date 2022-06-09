@@ -1,23 +1,16 @@
-# Robots_Guidance
+## Robots_Guidance
+=============
 
-Anotace
-Cílem úlohy je vytvořit vícevláknový server pro TCP/IP komunikaci a implementovat komunikační protokol podle dané specifikace. Pozor, implementace klientské části není součástí úlohy! Klientskou část realizuje testovací prostředí.
+Cílem úlohy je vytvořit vícevláknový server pro TCP/IP komunikaci a implementovat komunikační protokol podle dané specifikace. Pozor, implementace klientské části není součástí úlohy!
 
-Server nemusí být opravdu vícevláknový, musí jen zvládat obsluhovat několik klientů najednou. Jestli toho dosáhnete v jednom vlákně nebo za pomoci procesů je úplně jedno, hlavně když projdete všemi testy.
+Server pro automatické řízení vzdálených robotů. Roboti se sami přihlašují k serveru a ten je navádí ke středu souřadnicového systému. Pro účely testování každý robot startuje na náhodných souřadnicích a snaží se dojít na souřadnici [0,0]. Na cílové souřadnici musí robot vyzvednout tajemství. Po cestě k cíli mohou roboti narazit na překážky, které musí obejít. Server zvládne navigovat více robotů najednou a implementuje bezchybně komunikační protokol.
 
-Před začátkem implementace si prostudujte poznámky k odevzdání! Ušetříte si budoucí komplikace.
-
-Informace o tom jak psát client-server komunikaci naleznete na stránce s prosemináři.
-
-Zadání
-Vytvořte server pro automatické řízení vzdálených robotů. Roboti se sami přihlašují k serveru a ten je navádí ke středu souřadnicového systému. Pro účely testování každý robot startuje na náhodných souřadnicích a snaží se dojít na souřadnici [0,0]. Na cílové souřadnici musí robot vyzvednout tajemství. Po cestě k cíli mohou roboti narazit na překážky, které musí obejít. Server zvládne navigovat více robotů najednou a implementuje bezchybně komunikační protokol.
-
-Detailní specifikace
+# Detailní specifikace
 Komunikace mezi serverem a roboty je realizována plně textovým protokolem. Každý příkaz je zakončen dvojicí speciálních symbolů „\a\b“. (Jsou to dva znaky '\a' a '\b'.) Server musí dodržet komunikační protokol do detailu přesně, ale musí počítat s nedokonalými firmwary robotů (viz sekce Speciální situace).
 
 Zprávy serveru:
 
-Název	Zpráva	Popis
+Název	Zpráva Popis
 SERVER_CONFIRMATION	<16-bitové číslo v decimální notaci>\a\b	Zpráva s potvrzovacím kódem. Může obsahovat maximálně 5 čísel a ukončovací sekvenci \a\b.
 SERVER_MOVE	102 MOVE\a\b	Příkaz pro pohyb o jedno pole vpřed
 SERVER_TURN_LEFT	103 TURN LEFT\a\b	Příkaz pro otočení doleva
